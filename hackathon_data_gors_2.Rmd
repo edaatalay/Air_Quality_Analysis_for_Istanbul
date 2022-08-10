@@ -1,0 +1,217 @@
+---
+title: "Hava Kalitesi İçin Yapay Ağaçlar Projesi"
+author: "Better Days Takımı"
+date: "13/05/2022"
+output:
+  html_document: default
+---
+### PROJE AMACI
+Hava Kalitesi İndeksi, İngilizce'siyle Air Quality Index(AQI), olumlu anlama sahip gibi gözükse de aslında bu değer arttıkça hava kirliliğinin arttığını ifade eder. Değer aralıklarının hava kalitesi hakkında neyi ifade ettiğini görselde görebilirsiniz.
+![](https://www.deq.ok.gov/wp-content/uploads/air-division/aqi_mini-1200x675.png){width=50%}
+
+İstanbul gibi kalabalık bir şehrin de hava kalitesinin incelenmesi, düşük hava kalitesinin nedenlerinin ve düzeltmek için neler yapılabileceğinin düşünülmesi gerekir. Bizim de projedeki amacımız ulaşabildiğimiz veri kaynaklarını kullanarak İstanbul'un hava kalitesini semtlere ve belediyelere göre görselleştirip incelemek ve daha iyi hava kalitesi için çözüm bulmaktı. <br>
+Düşük hava kalitesini iyileştirmek için metropollerin ağaç dikebilmek gibi bir şansı malesef ki çok yok. Çok kalabalık ve ağaç dikmek için çok yer olmayan İstanbul'u da düşündüğümüzde AQI değerlerini düşürmek için dünyada da örnekleri bulunan yapay ağaçlar güzel bir çözüm. Örneğin araç trafiğinin yoğun olduğu ve kalabalık olan semtlerde hava kalitesi düşük ama ağaç dikebileceğimiz bir alan yok. "Mikro şehir ormanları" olarak da anılan yapay ağaçlar ise az yer kaplarken çok ağacın işini görüyor.  
+
+![](http://www.sanatatak.com/wp-content/uploads/2017/07/170526131654-citytree-2-exlarge-169.jpg){width=50%}
+
+
+### İSTANBUL HAVA KALİTESİ İNDEKSİ ANALİZİ İÇİN GÖRSELLEŞTİRMELER  
+Öncelikle gerekli kütüphaneleri import ettik ve verileri R ortamına çektik. Dataset'leri İBB Açık Veri Portalı'nda [Hava Kalitesi İstasyon Bilgileri Web Servisi](https://data.ibb.gov.tr/dataset/hava-kalitesi-istasyon-bilgileri-web-servisi) ve [Hava Kalitesi İstasyon Ölçüm Sonuçları Web Servisi](https://data.ibb.gov.tr/dataset/hava-kalitesi-istasyon-olcum-sonuclari-web-servisi) isimli API'lar üzerinden çektik ve Python'da düzenledikten sonra R ortamına import ettik.
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(readr)
+library(readxl)
+library(rvest)
+library(htmlwidgets)
+library(dplyr)
+library(sf)
+library(leaflet)
+library(hrbrthemes)
+library(plotly)
+data <- read_csv("data/dataframe1.csv")
+ilce <- read_csv("data/ilce_info1.csv")
+```
+
+Hava kalitesi İndeksi sütununu öncelikle nümerik hale getirdik. Görselleştirme için ihtiyacımız olan enlem ve boylam bilgilerine göre grupladık. İncelediğimiz tarih aralığı için (1 Ocak 2020-19 Haziran 2020) semtlerin ortalama hava kalitesi indekslerini hesapladık.
+
+```{r, warning=FALSE, message=FALSE}
+data$AQIIndex <- as.numeric(data$AQIIndex)
+mean_of_AQI <- data %>%
+  filter( is.na(AQIIndex) == FALSE) %>%
+  group_by(Name, Longitude, Latitude) %>%
+  summarise(AQIIndex = sum(AQIIndex)/length(Name)) %>%
+  mutate(AQIIndex = round(AQIIndex, 2))
+```
+
+Bir bar chart üzerinde semtlere göre hava kalitesi indeksini azdan çoğa doğru gidecek şekilde görselleştirdik.
+
+```{r}
+mean_of_AQI %>%
+  ggplot(aes(x = reorder(Name, AQIIndex), y = AQIIndex)) +
+  lims(y = c(0, 70)) +
+  geom_bar(stat="identity", fill="#007683") +
+  labs(title = "Semtlere Göre Ortalama Hava Kalitesi İndeksi",
+       x = "",
+       y = "",caption= "Figür 1") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),
+    axis.text.x = element_text(angle=90, hjust=1,vjust=0.30)
+  ) +
+  geom_text(aes(label=AQIIndex), hjust= -0.1, vjust=0.3, angle=90, cex=3, fontface="italic")
+```
+
+Harita üzerinde hava kalitesi indeksine göre görselleştirme yapabilmek adına bir distribution sütunu oluşturduk. Distribution sütununda ortalama hava kalitesi indeksi değer aralığına göre sınıflar bulunuyor. Haritadaki renk skalasını bu sınıflara göre oluşturduk.
+
+```{r}
+mean_of_AQI <- mean_of_AQI %>%
+          mutate(distribution = case_when(
+                                            AQIIndex <=10 ~ "1",
+                                            AQIIndex <20 ~ "2",
+                                            AQIIndex <30 ~ "3",
+                                            AQIIndex <40 ~ "4",
+                                            AQIIndex <50 ~ "5",
+                                            AQIIndex >=50 ~ "6"))
+
+```
+
+Datasetimizi harita üzerinde görselleştirebilmek adına shapefile tipi dataset'e dönüştürdük.
+
+```{r}
+mean_as_sf <- st_as_sf(mean_of_AQI,
+                 coords = c("Longitude", "Latitude"),
+                 crs = 4326)
+```
+
+leaflet kütüphanesini kullanarak İstanbul haritası üzerinde ortalama hava kalitesi indeksini görselleştirdik. Burada yuvarlakların boyutunu ve rengini hava kalitesi indeksine göre ayarladık. Daha büyük ve koyu renkteki yuvarlaklar daha kötü hava kalitesini gösterirken, daha küçük ve açık renkteki yuvarlaklar daha iyi hava kalitesini gösteriyor.
+
+```{r}
+pal_col <- colorFactor(c("#ffb600", "#FF7900", "#D45600", "#AB3300", "#840700", "#610000"), domain = unique(mean_of_AQI$distribution))
+labels <-  sprintf("<strong> İlçe: %s <br> Ortalama Hava Kalitesi İndeksi: %g </strong><br/>",
+                   mean_as_sf$Name,
+                   mean_as_sf$AQIIndex) %>%
+           lapply(htmltools::HTML)
+
+mean_as_sf %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircleMarkers(radius = ~ifelse(distribution < 5, 7, 9), 
+                   color = ~pal_col(distribution),
+                   stroke = FALSE,
+                   fillOpacity = 1,
+                   label = labels) %>%
+  addLegend("bottomright",
+            pal=pal_col,
+            values=~distribution,
+            title = 'AQI Seviyesi')
+```
+  
+[İBB Açık Veri Portalı Belediye Nüfus Verisetini](https://data.ibb.gov.tr/dataset/belediye-nufuslari-veri-seti) kullanarak belediyelere göre nüfus yoğunluğuyla hava kalitesinin ilişkisi olup olmadığını görmek istedik. Hem böylece yapay ağaçların konumuna karar vermemizde nereye yerleştirilirse daha çok vatandaşa faydamız olur, bunu görebileceğiz.  
+
+```{r}
+nufus <- read_xlsx("data/belediye_nufus.xlsx")
+nufus <- nufus %>%
+  filter(nufus$Belediyeler %in% data$Adress)
+```
+
+Belediyelere göre nüfus yoğunluğunu azdan çoğa doğru olacak şekilde görselleştirdik.  
+
+```{r}
+nufus %>%
+  ggplot(aes(x = reorder(Belediyeler, `2019 yılı nüfusları`), y = `2019 yılı nüfusları`)) +
+  geom_bar(stat="identity", fill="#f57038") +
+  lims(y = c(0, 900000)) +
+  labs(title = "Belediyelere Göre Nüfus Yoğunluğu",
+       x = "",
+       y = "",caption= "Figür 2") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),
+    axis.text.x = element_text(angle=90, hjust=1,vjust=0.30)
+  ) +
+  geom_text(aes(label=`2019 yılı nüfusları`), hjust= -0.1, vjust=0.3, angle=90, cex=3, fontface="italic")
+```
+
+Bazı ilçelerde birden fazla yerde hava kalitesi indeksi ölçümü yapıldığı için, Figür 1'de bu ilçeler için birden fazla değer gözüküyordu. Bunu belediye bazında toparlayarak görselleştirmek istedik.
+
+```{r}
+mean_for_adress <- data %>%
+  filter(is.na(AQIIndex) == FALSE) %>%
+  group_by(Adress) %>%
+  summarise(AQIIndex = sum(AQIIndex)/length(Adress)) %>%
+  mutate(AQIIndex = round(AQIIndex, 2))
+```
+
+```{r}
+mean_for_adress %>%
+  ggplot(aes(x = reorder(Adress, AQIIndex), y = AQIIndex)) +
+  lims(y = c(0, 60)) +
+  geom_bar(stat="identity", fill="#009aab") +
+  labs(title = "Belediyelere Göre Ortalama Hava Kalitesi İndeksi",
+       x = "",
+       y = "",caption= "Figür 3") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),
+    axis.text.x = element_text(angle=90, hjust=1,vjust=0.30)
+  ) +
+  geom_text(aes(label=AQIIndex), hjust= -0.1, vjust=0.3, angle=90, cex=3)
+```
+
+Nüfus ve hava kalitesi indeksi değerleri arasında ilişki olup olmadığını görebilmek için değerleri bir grafikte birleştirmek istedik. Bunu yapabilmek için iki dataset'i ortak sütunlarıyla left_join() yaptık.
+
+```{r}
+mean_for_adress <- rename(mean_for_adress, Belediyeler = Adress)
+```
+
+```{r}
+merged_by_adress <- left_join(mean_for_adress, nufus, by = "Belediyeler")
+merged_by_adress <- merged_by_adress %>%
+  na.omit()
+```
+
+Figür 4'te bar plot olarak nüfus yoğunluğunu gösterirken, line ile de AQI değerlerini gösterdik. 
+
+```{r}
+AQIColor <- "#134e6f"
+nufusColor <- "#f57038"
+merged_by_adress %>%
+  ggplot(aes(x = reorder(Belediyeler, `2019 yılı nüfusları`))) +
+  geom_col(aes( y = `2019 yılı nüfusları`), size = 1, color = nufusColor, fill = nufusColor )+
+  geom_line(aes( y = 10000*AQIIndex), size = 1.5, color=AQIColor, group = 1) + 
+  scale_y_continuous(
+    name="Nüfus Değerleri",
+    sec.axis = sec_axis(~./10000, name="Hava Kalitesi İndeksi Ortalama Değerleri"))  +
+  labs(x="", caption= "Figür 4") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),
+    axis.text.x = element_text(angle=90, hjust=1,vjust=0.30),
+    axis.title.y = element_text(color = nufusColor, size=9),
+    axis.title.y.right = element_text(color = AQIColor, size=9)
+  ) +
+  ggtitle("")
+```
+
+### GÖRSELLEŞTİRMELER ÜZERİNE YORUMLARIMIZ VE SONUÇLAR
+* Figür 1'de görülebileceği gibi en yüksek Hava Kalitesi İndeksine sahip beş semt Sultangazi, Aksaray, Alibeyköy, Kağıthane ve Kadıköy'dür. Aynı figürde en düşük Hava Kalitesi İndeksine sahip beş semt ise Kandilli, Büyükada, Kumköy, Sarıyer ve Maslak'tır.
+* Haritada görüldüğü üzere burada İstanbul ilçeleri üzerinde AQI seviyelerine dair bir görselleştirme yaptık. Bu görselleştirmeyi yapma amacımız yapay ağaçların konulması gereken yerlerin tespit edilmesiydi.
+Örneğin, Sultangazi ve Fatih gibi büyük ve koyu renkli noktalara sahip ilçelere, çözüm olarak sunduğumuz yapay ağaçlar konumlandırılabilir.
+* Figür 2'de görüldüğü gibi belediyeler arasında en yüksek nüfus yoğunluğuna sahip beş belediye Bağcılar, Pendik, Ümraniye, Bahçelievler ve Sultangazi iken, en düşük nüfus yoğunluğuna sahip beş belediye Adalar, Beşiktaş, Tuzla, Arnavutköy ve Sarıyer'dir.
+* Figür 3'ün, Figür 1'deki grafiğin daha genelleştirilmiş hali olduğunu söyleyebiliriz.
+* Figür 4'te görüldüğü üzere hava kirliliği ile nüfus arasında lineer bir ilişki yakalayamadık. Bunun nedeni, hava kalitesinin sadece nüfus değil, başka etmenlere de bağlı olması olabilir. Yine de bazı ilçeler için hem kalabalık, hem de yüksek hava kalitesi indeksine sahip olduklarını söyleyebiliriz. Buna örnek Sultangazi'yi verebiliriz. Öte yandan Adalar için de hem nüfus yoğunluğunun hem de hava kalitesi indeksinin en az olduğunu söyleyebiliriz.
+* İstanbul ciddi bir hava kirliliği problemine sahip olmasa da AQI ortalama değeri büyük olan Sultangazi, Aksaray, Alibeyköy, Kağıthane ve Kadıköy gibi semtlerin hava kalitesini iyileştirmeye ihtiyaçları var.
+
+### HAVA KALİTESİ İNDEKSİNİ DÜŞÜRMEK İÇİN ÇÖZÜMÜMÜZ
+Yapay ağaç projesine örnek olarak [CityTree](https://greencitysolutions.de/en/citytree/) uygulamasına baktığımızda tek ağacın 275 katı hava temizleme kapasitesi sunarken aynı sonucu elde etmek için gereken yerin sadece %1'ini kaplıyor. Havayı temizlemedeki verimliliği dışında bulunduğu ortamda küresel ısınmanın sonucu olan yüksek sıcaklığı azaltmaya yarıyor. Taşınabilir olması da gerektiğinde İstanbul içinde farklı yerlere konumlandırılabilmelerini sağlıyor.
+Bu teknoloji çoktan Berlin, Londra, Oslo, Paris, Hong Kong ve Brüksel gibi büyük şehirlerde kullanılmaya başlanmış. Eğer İstanbul'da kullanabilirsek, özellikle analizimiz sonucunda tespit ettiğimiz belediyelerde, daha temiz bir havaya kavuşabiliriz.
+
+### KAYNAKÇA
+[Hava Kalitesi İstasyon Bilgileri Web Servisi](https://data.ibb.gov.tr/dataset/hava-kalitesi-istasyon-bilgileri-web-servisi)  
+[Hava Kalitesi İstasyon Ölçüm Sonuçları Web Servisi](https://data.ibb.gov.tr/dataset/hava-kalitesi-istasyon-olcum-sonuclari-web-servisi)  
+[Nüfus Yoğunluğu Veriseti](https://data.ibb.gov.tr/dataset/belediye-nufuslari-veri-seti)   
+[LSTM Modeli](https://github.com/bnsreenu/python_for_microscopists/blob/master/166a-Intro_to_time_series_Forecasting_using_LSTM.py)  
+[HTML Color Codes](https://htmlcolorcodes.com/)  
+[R Graph Gallery](https://r-graph-gallery.com/index.html)
+
