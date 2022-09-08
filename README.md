@@ -9,7 +9,7 @@ Sustainable Cities Hackaton is arranged by Istanbul Metropolitan Municipality an
 ### Team Members
 - Eda Atalay
 - Beyza Nur Kebeli
-- İpek Korkmaz
+- İpek Korkmaz  
 We are students from Istanbul Technical University, Mathematics Engineering major. 
 
 ### Problem
