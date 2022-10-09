@@ -41,7 +41,7 @@ We are students from Istanbul Technical University, Mathematics Engineering majo
   - We performed the visualization and analysis of these data using the R software language.
 
 ### Instructions
-- The files related to the project are Turkish because of the concept of hackaton. The files will be converted into English later. Thanks for your understanding. 
+- The files related to the project are Turkish because of the concept of hackaton. The files will be converted into English later. Thank you for your understanding. 
 - You can find the template of the project in the "hava_kalitesi_icin_yapay_agaclar_template.pptx" file.
 - You can find the datasets used throughout the project in the "data" folder.
 - You can review the "hackathon_data_hazırlığı_1.ipynb" file for data cleaning & preparation.
