@@ -1,6 +1,6 @@
 <h2 align="center"><span><strong>2022 Istanbul Metropolitan Municipality Sustainable Cities Hackathon</strong></span></h2>
 
-Sustainable Cities Hackaton is arranged by Istanbul Metropolitan Municipality and Microsoft Turkey to celebrate The May 19 the Commemoration of Atatürk, Youth and Sports Day. The project "Artificial Trees for Air Quality" has been created by the scope of Sustainable Cities Hackaton, within 3 weeks and the concept of sustainability. With "Artificial Trees for Air Quality" project, our team has managed to be finalist among 9 teams by standing out from 44 teams.
+Sustainable Cities Hackaton is arranged by Istanbul Metropolitan Municipality and Microsoft Turkey to celebrate The May 19 the Commemoration of Atatürk, Youth and Sports Day. The project "Artificial Trees for Air Quality" has been created by the scope of Sustainable Cities Hackaton, within 3 weeks and the concept of sustainability. With "Artificial Trees for Air Quality" project, our team has managed to be *finalist* among 9 teams by standing out from 44 teams.
 
 
 ### Project Name
